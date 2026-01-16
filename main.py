@@ -45,13 +45,12 @@ FPS = 60
 def on_press(key):
     global player_angle, running
     try:
-        # if key == keyboard.Key.left:
-        #     player_angle = (player_angle - 5) % 360
-        # elif key == keyboard.Key.right:
-        #     player_angle = (player_angle + 5) % 360
-        # elif key == keyboard.Key.esc:
-        #     running = False
-        pass
+        if key == keyboard.Key.left:
+             player_angle = (player_angle - 5) % 360
+        elif key == keyboard.Key.right:
+             player_angle = (player_angle + 5) % 360
+        elif key == keyboard.Key.esc:
+             running = False
     except:
         pass
 
@@ -230,10 +229,10 @@ def pygame_thread_fn():
             elif game_over and event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     running = False
-            # elif event.type == pygame.KEYDOWN:
-            #     if event.key == pygame.K_SPACE:
-            #         shoot_sound.play()
-            #         shoot(player_angle)
+            elif event.type == pygame.KEYDOWN:
+                 if event.key == pygame.K_SPACE:
+                     shoot_sound.play()
+                     shoot(player_angle)
 
         keys = pygame.key.get_pressed()
         # if keys[pygame.K_LEFT]:
@@ -299,9 +298,8 @@ class ImuSubscriber(Node):
                 break
 
         msg = Int32()
-        msg.data = 1 if enemy_in_cone else 0
+        msg.data = 1 if enemy_in_cone else 0   # 1 = vibrate, 0 = stop
         self.motor_pub.publish(msg)
-
 
 # --- Main Execution ---
 def main(args=None):
