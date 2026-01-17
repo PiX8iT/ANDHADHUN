@@ -11,13 +11,11 @@
 
 #include <WiFi.h>
 
-/* ================= USER CONFIG ================= */
 char ssid[] = "Redmi 12 5G";
 char password[] = "0123987654";
 char agent_ip[] = "10.57.191.92";
 
 #define TRIGGER_PIN 19   // SPDT NO → GPIO19
-/* =============================================== */
 
 MPU6050 mpu;
 
@@ -42,15 +40,12 @@ void setup() {
   Serial.begin(115200);
   delay(2000);
 
-  /* -------- Trigger switch -------- */
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
 
-  /* -------- I2C -------- */
   Wire.begin(21, 22);
   Wire.setClock(400000);
   delay(100);
 
-  /* Wake MPU6050 */
   Wire.beginTransmission(0x68);
   Wire.write(0x6B);
   Wire.write(0x00);
@@ -60,12 +55,10 @@ void setup() {
   mpu.initialize();
   delay(100);
 
-  /* Test IMU */
   int16_t ax, ay, az;
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
   Serial.println("MPU OK | Gz=" + String(gz));
 
-  /* -------- WiFi -------- */
   WiFi.begin(ssid, password);
   Serial.print("WiFi");
   int tries = 0;
@@ -76,14 +69,12 @@ void setup() {
   }
   Serial.println("\nIP: " + WiFi.localIP().toString());
 
-  /* -------- micro-ROS -------- */
   set_microros_wifi_transports(ssid, password, agent_ip, 8888);
 
   allocator = rcl_get_default_allocator();
   rclc_support_init(&support, 0, NULL, &allocator);
   rclc_node_init_default(&node, "imu_node", "", &support);
 
-  /* Yaw publisher */
   rclc_publisher_init_default(
     &yaw_publisher,
     &node,
@@ -91,7 +82,6 @@ void setup() {
     "yaw_angle"
   );
 
-  /* Trigger publisher */
   rclc_publisher_init_default(
     &trigger_publisher,
     &node,
@@ -106,17 +96,15 @@ void setup() {
 }
 
 void loop() {
-  /* -------- Time delta -------- */
   unsigned long now = millis();
   float dt = (now - lastTime) / 1000.0;
   lastTime = now;
 
-  /* -------- Read IMU -------- */
   int16_t ax, ay, az;
   mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
 
-  float gyroZ = (float)gz / 131.0;   // deg/sec
-  yaw += gyroZ * dt;
+  float gyroX = (float)gx / 131.0;   // deg/sec
+  yaw += gyroX * dt;
 
   if (yaw >= 360) yaw -= 360;
   if (yaw < 0) yaw += 360;
@@ -124,10 +112,8 @@ void loop() {
   yaw_msg.data = yaw;
   rcl_publish(&yaw_publisher, &yaw_msg, NULL);
 
-  /* -------- Trigger logic -------- */
   int trigger_state = digitalRead(TRIGGER_PIN);
 
-  // PRESSED = LOW = FIRE
   if (trigger_state == LOW) {
     trigger_msg.data = 0;   // FIRE
   } else {
@@ -136,7 +122,6 @@ void loop() {
 
   rcl_publish(&trigger_publisher, &trigger_msg, NULL);
 
-  /* -------- Debug -------- */
   Serial.print("Yaw: ");
   Serial.print(yaw, 1);
   Serial.print(" | Trigger: ");
