@@ -23,8 +23,8 @@ enemies = []
 enemy_sources = []
 last_spawn_time = 0
 PLAYER_HEALTH = 1000
-stack_active = False
-active_stack_pairs = set()
+AIM_BEEP_DELAY = 300   # ms between beeps
+last_aim_beep_time = 0
 
 # --- Pygame & Audio Init ---
 pygame.mixer.init()
@@ -115,7 +115,7 @@ def voice_command_thread():
     while running:
         try:
             with mic as source:
-                print("🎤 Listening...")
+                print("Listening...")
                 audio = recognizer.listen(source, timeout=3, phrase_time_limit=2.5)
 
             command = recognizer.recognize_google(audio).lower()
@@ -140,9 +140,9 @@ def voice_command_thread():
         except sr.WaitTimeoutError:
             continue
         except sr.UnknownValueError:
-            print("❓ Speech not clear")
+            print("Speech not clear")
         except Exception as e:
-            print("❌ Voice error:", e)
+            print("Voice error:", e)
             time.sleep(1)
 
 # --- Enemy Spawn & Update ---
@@ -191,27 +191,35 @@ def update_enemies():
         #    speak("Zombie nearby")
         #    enemy['last_alert_time'] = current_time
 
-def check_enemy_stacking():
-    global active_stack_pairs
+def check_aim_alignment_beep():
+    global last_aim_beep_time
 
-    current_pairs = set()
+    current_time = pygame.time.get_ticks()
+    best_diff = None
 
-    for i in range(len(enemies)):
-        for j in range(i + 1, len(enemies)):
-            dx = enemies[i]['x'] - enemies[j]['x']
-            dy = enemies[i]['y'] - enemies[j]['y']
-            distance = math.hypot(dx, dy)
+    for enemy in enemies:
+        dx = enemy['x'] - CENTER[0]
+        dy = CENTER[1] - enemy['y']
 
-            if distance < ENEMY_SIZE * 0.8:
-                current_pairs.add((i, j))
+        enemy_angle = math.degrees(math.atan2(dy, dx))
+        if enemy_angle < 0:
+            enemy_angle += 360
 
-                # 🔔 NEW overlap detected
-                if (i, j) not in active_stack_pairs:
-                    stack_beep.play()
+        diff = abs(enemy_angle - player_angle) % 360
+        if diff > 180:
+            diff = 360 - diff
 
-    # Update active pairs (auto-reset when separated)
-    active_stack_pairs = current_pairs
+        if best_diff is None or diff < best_diff:
+            best_diff = diff
 
+    # Only beep if aligned
+    if best_diff is not None and best_diff <= 25:
+        if current_time - last_aim_beep_time >= AIM_BEEP_DELAY:
+            # 🔊 Volume increases as aim improves
+            volume = max(0.05, min(0.4, 1 - (best_diff / 25)))
+            stack_beep.set_volume(volume)
+            stack_beep.play()
+            last_aim_beep_time = current_time
 
 # --- Drawing Functions ---
 def draw_quadrants(screen):
@@ -311,7 +319,7 @@ def pygame_thread_fn():
             draw_player(screen, player_angle)
             draw_spawn_circle(screen)
             update_enemies()
-            check_enemy_stacking()   # STACK ALERT
+            check_aim_alignment_beep()
             draw_enemies(screen)
             display_imu_data(screen, player_angle, PLAYER_HEALTH, font)
 
