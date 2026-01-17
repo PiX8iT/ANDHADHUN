@@ -94,7 +94,8 @@ def voice_command_thread():
     global game_state, running
 
     recognizer = sr.Recognizer()
-    recognizer.dynamic_energy_threshold = True
+    recognizer.dynamic_energy_threshold = False
+    recognizer.energy_threshold = 300
     recognizer.pause_threshold = 0.6
     recognizer.phrase_threshold = 0.3
     recognizer.non_speaking_duration = 0.4
@@ -115,11 +116,7 @@ def voice_command_thread():
         try:
             with mic as source:
                 print("🎤 Listening...")
-                audio = recognizer.listen(
-                    source,
-                    timeout=5,
-                    phrase_time_limit=3
-                )
+                audio = recognizer.listen(source, timeout=3, phrase_time_limit=2.5)
 
             command = recognizer.recognize_google(audio).lower()
             print("🗣 You said:", command)
