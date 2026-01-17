@@ -22,16 +22,23 @@ player_angle = 0
 enemies = []
 enemy_sources = []
 last_spawn_time = 0
-PLAYER_HEALTH = 100
+PLAYER_HEALTH = 1000
+stack_active = False
+active_stack_pairs = set()
 
 # --- Pygame & Audio Init ---
 pygame.mixer.init()
 breathing_sound = pygame.mixer.Sound("sounds/breathing.wav")
 breathing_sound.set_volume(0.3)
 shoot_sound = pygame.mixer.Sound("sounds/gunshot.wav")
-shoot_sound.set_volume(0.8)
+shoot_sound.set_volume(0.6)
 bite_sound = pygame.mixer.Sound("sounds/bite.wav")
 bite_sound.set_volume(0.5)
+stack_beep = pygame.mixer.Sound("sounds/stack_beep.wav")
+stack_beep.set_volume(1)
+
+STACK_BEEP_DELAY = 600  # ms
+last_stack_beep_time = 0
 
 os.environ["ALSOFT_LOGLEVEL"] = "3"
 os.environ["ALSOFT_HRTF_MODE"] = "true"
@@ -51,13 +58,13 @@ PROXIMITY_ALERT_INTERVAL = 2000  # ms
 def on_press(key):
     global player_angle, running
     try:
-        # if key == keyboard.Key.left:
-        #      player_angle = (player_angle - 5) % 360
-        # elif key == keyboard.Key.right:
-        #      player_angle = (player_angle + 5) % 360
-        # elif key == keyboard.Key.esc:
-        #      running = False
-        pass
+        if key == keyboard.Key.left:
+             player_angle = (player_angle - 5) % 360
+        elif key == keyboard.Key.right:
+             player_angle = (player_angle + 5) % 360
+        elif key == keyboard.Key.esc:
+             running = False
+        #pass
     except:
         pass
 
@@ -87,24 +94,31 @@ def voice_command_thread():
     global game_state, running
 
     recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 200
     recognizer.dynamic_energy_threshold = True
-    recognizer.pause_threshold = 0.8
+    recognizer.pause_threshold = 0.6
     recognizer.phrase_threshold = 0.3
+    recognizer.non_speaking_duration = 0.4
 
-    mic = sr.Microphone(device_index=9)  # ✅ pulse
+    mic = sr.Microphone(device_index=4)  # ALC255 Analog
 
-    print("🎙 Voice command thread started (PulseAudio)")
+
+    print("🎙 Voice command thread started")
+
+    # 🔧 CALIBRATE ONCE
+    with mic as source:
+        print("🔧 Calibrating mic… stay silent")
+        recognizer.adjust_for_ambient_noise(source, duration=1)
+        print("✅ Calibration done")
+
 
     while running:
         try:
             with mic as source:
                 print("🎤 Listening...")
-                recognizer.adjust_for_ambient_noise(source, duration=0.5)
                 audio = recognizer.listen(
                     source,
-                    timeout=4,
-                    phrase_time_limit=4
+                    timeout=5,
+                    phrase_time_limit=3
                 )
 
             command = recognizer.recognize_google(audio).lower()
@@ -112,25 +126,24 @@ def voice_command_thread():
 
             if "start" in command:
                 game_state = "RUNNING"
-                print("▶ GAME STARTED")
+                speak("Game started")
 
             elif "pause" in command:
                 game_state = "PAUSED"
-                print("⏸ GAME PAUSED")
+                speak("Game paused")
 
-            elif "continue" in command or "resume" in command:
+            elif "resume" in command or "continue" in command:
                 game_state = "RUNNING"
-                print("▶ GAME RESUMED")
+                speak("Game resumed")
 
             elif "end" in command or "exit" in command or "stop" in command:
-                game_state = "ENDED"
+                speak("Game ended")
                 running = False
-                print("⛔ GAME ENDED")
 
         except sr.WaitTimeoutError:
             continue
         except sr.UnknownValueError:
-            print("❓ Could not understand")
+            print("❓ Speech not clear")
         except Exception as e:
             print("❌ Voice error:", e)
             time.sleep(1)
@@ -177,9 +190,31 @@ def update_enemies():
                 enemy['last_bite_time'] = current_time
 
         # Proximity voice alert
-        if distance <= PROXIMITY_ALERT_DISTANCE and current_time - enemy['last_alert_time'] >= PROXIMITY_ALERT_INTERVAL:
-            speak("Zombie are approaching!")
-            enemy['last_alert_time'] = current_time
+        # if distance <= PROXIMITY_ALERT_DISTANCE and current_time - enemy['last_alert_time'] >= PROXIMITY_ALERT_INTERVAL:
+        #    speak("Zombie nearby")
+        #    enemy['last_alert_time'] = current_time
+
+def check_enemy_stacking():
+    global active_stack_pairs
+
+    current_pairs = set()
+
+    for i in range(len(enemies)):
+        for j in range(i + 1, len(enemies)):
+            dx = enemies[i]['x'] - enemies[j]['x']
+            dy = enemies[i]['y'] - enemies[j]['y']
+            distance = math.hypot(dx, dy)
+
+            if distance < ENEMY_SIZE * 0.8:
+                current_pairs.add((i, j))
+
+                # 🔔 NEW overlap detected
+                if (i, j) not in active_stack_pairs:
+                    stack_beep.play()
+
+    # Update active pairs (auto-reset when separated)
+    active_stack_pairs = current_pairs
+
 
 # --- Drawing Functions ---
 def draw_quadrants(screen):
@@ -279,6 +314,7 @@ def pygame_thread_fn():
             draw_player(screen, player_angle)
             draw_spawn_circle(screen)
             update_enemies()
+            check_enemy_stacking()   # STACK ALERT
             draw_enemies(screen)
             display_imu_data(screen, player_angle, PLAYER_HEALTH, font)
 
